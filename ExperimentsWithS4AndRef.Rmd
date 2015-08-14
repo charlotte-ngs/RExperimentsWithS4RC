@@ -1,0 +1,471 @@
+---
+title: "Experiments With S4 Classes And With Reference Classes"
+author: "Peter von Rohr"
+date: "8 Jul 2015"
+output: html_document
+---
+
+This post shows some experiments with two of the class systems in R
+
+1. S4 classes (S4)
+2. Reference classes (RC)
+
+This is not a user-friendly introduction or a tutorial. But it is just a reference of programming constructs that seam useful to me and that I have not found in other reference documents that I have looked at so far. Most likely there are other ways in how to work with S4 and RC.  
+
+## Introduction
+Unlike C++, Java or Python, R has several class systems that can be used. On the one hand this makes it convenient for the user to employ the system that fits best for the problem. On the other hand it makes the whole story a little bit more complicated. There are many good references out there on the different R class systems. There is the book by Kelly Black entitled [`R Object-oriented Programming`](http://www.amazon.de/R-Object-oriented-Programming-Kelly-Black/dp/1783986689) and the [R-tutorial](http://www.cyclismo.org/tutorial/R) by the same author which describe the S3 and the S4 class system, but which misses out on reference classes. Then there is [`Advanced R`](http://adv-r.had.co.nz) by Hadley Wickham which introduces S3, S4 and reference classes. 
+
+### An easy example of a person class
+In what follows I am using a very simple example of creating a class that represents a person with its given name, its family name, its email address and its year of birth. The class and a set of methods is created using both the S4 and the RC class systems. 
+
+
+## The S4 Class System
+In S4 new classes are created using the function `setClass()` with the first argument being a string that specifies the name of the newly created class and the second argument corresponding to the so-called representation of the class which basically defines the fields or the slots of the class. For our little person class this might look as follows
+
+```{r S4ClassDefinition}
+setClass(Class = "S4Person", 
+         representation = list(givenName = "character", 
+                               familyName = "character",
+                               emailAddress = "character",
+                               yearOfBirth = "numeric"))
+```
+
+A new instance of the defined class is created using `new()`. 
+
+```{r S4ObjectInstantiation}
+alice <- new("S4Person", 
+             givenName = "Alice", 
+             familyName = "Wonder", 
+             emailAddress = "alice@wonderland.com", 
+             yearOfBirth = 1975)
+```
+
+### Direct access of slots
+In principle a slot of an instance can be accessed using the `@` operator which means we can also change values of slots using this accesion operator by simple assignment.
+
+```{r S4DirectFieldAssignment}
+alice@givenName
+alice@familyName
+alice@familyName <- "Magic"
+alice@familyName
+```
+
+### Information hiding
+In object-oriented programming (OOP), direct access of object fields or direct assignment of values to object fields is strongly 
+discouraged, because it violates one of the central concepts of OOP which is called `information hiding`. The concept of 
+`information hiding` means that the internal structure of an object is hidden from its user. The only way the user can modify an object is via publically defined methods which are documented and known to the user. The set of the publically defined methods of a class is termed its `interface`. 
+
+### Setter and Getter methods
+A much cleaner way than directly accessing object fields and assigning values to object fields is to define methods that are responsible for accessing and changing the objects. In a first step, we would need to define so-called `Setter`- and `Getter`-methods to change values of object-slots and to access the slots of an object.
+
+For our example with the class `S4Person`, the getter method for the slot `familyName` might look as follows. 
+
+```{r S4GetterMethodDefinition}
+setGeneric("getFamilyName", function(x){standardGeneric("getFamilyName")})
+setMethod("getFamilyName", c(x = "S4Person"),function(x){return(x@familyName)})
+getFamilyName(alice)
+```
+
+It is important to note that a getter method for a given slot does nothing else than just returning the value stored in the respective slot. To change a value that is stored in a slot, we need a setter method. For the slot `familyName` in class `S4Person` this can be done as follows.
+
+```{r S4SetterMethodDefinition}
+setGeneric("setFamilyName", function(x, psFamilyName){standardGeneric("setFamilyName")})
+setMethod("setFamilyName", 
+          c(x = "S4Person", psFamilyName = "character"), 
+          function(x, psFamilyName){
+            x@familyName <- psFamilyName
+            return(x)})
+(alice <- setFamilyName(alice, "Wonder"))
+```
+
+### What is the point?
+The approach of accessing and changing slots with setter and getter methods seams a lot of work and tedious to implement. The point why slots should only be changed and accessed using setter and getter methods and not via direct access can be shown using an example with a hypothetical field called `age` and and the field `yearOfBirth`. The values in those two fields are dependent and it is definitely not a good idea to store them both as independent numeric values, because keeping them consistent is difficult and  error-prone. Hence, it is best to store one as a numeric value and to compute the other one from the first one. But there is no clear rule which one should be stored and which one should be computed. 
+
+Very often as a user, I cannot find out about such internal details of a class whether a certain slot of an object is just stored in memory or whether a slot uses a function to compute its values. And that is how it should be. A user should not have to bother about internal details of a class. As a user I should be able to just instantiate new objects from a class and set the slots according to my input data. What is stored and what is computed should not bother me. The fact of the user not knowing about the internal details of a class is a very important concept in object-oriented programming and it is termed `information hiding`. 
+
+Using the principle of `information hiding` for our example, we randomly decide that the slot `yearOfBirth` should be stored and the age should be computed from the value in slot `yearOfBirth`. The practical demonstration of the information hiding concept is deferred to the next section and is shown using the Reference Class system.
+
+
+## The RC System
+Reference classes (RC) are the newest of the class systems in R. Unlike S3 and S4, methods belong to objects not to functions and RC objects are mutable, i.e., the usual copy-on-modify semantics do not apply. As a consequence of that RC objects behave much more like objects in other OO languages like C++ and Java.
+
+Classes are created using the function `setRefClass()` and objects from a given class are instantiated using the method `new()` on the defined class. Returning to our example with the person class, we define a reference class for a person with fields `givenName`, `familyName`, `emailAddress` and `yearOfBirth` with their respective getter and setter methods as follows,
+
+```{r RefClassDefinition}
+RCPerson <- setRefClass("RCPerson",
+                        fields = list(givenName = "character", 
+                                      familyName = "character",
+                                      emailAddress = "character",
+                                      yearOfBirth = "numeric"),
+                        methods = list(
+                          setGivenName = function(psGivenName){
+                            givenName <<- psGivenName
+                          },
+                          getGivenName = function(){
+                            return(givenName)
+                          },
+                          setFamilyName = function(psFamilyName){
+                            familyName <<- psFamilyName
+                          },
+                          getFamilyName = function(){
+                            return(familyName)
+                          },
+                          setEmailAddress = function(psEmailAddress) {
+                            emailAddress <<- psEmailAddress
+                          },
+                          getEmailAddress = function(){
+                            return(emailAddress)
+                          },
+                          setYearOfBirth = function(pnYearOfBirth) {
+                            yearOfBirth <<- pnYearOfBirth
+                          },
+                          getYearOfBirth = function(){
+                            return(yearOfBirth)
+                          },
+                          setAge = function(pnAge) {
+                            nSysDateYear <- as.numeric(format(Sys.Date(), "%Y"))
+                            yearOfBirth <<- nSysDateYear - pnAge
+                          },
+                          getAge = function(){
+                            nSysDateYear <- as.numeric(format(Sys.Date(), "%Y"))
+                            return(nSysDateYear-yearOfBirth)
+                          }
+                          ))
+
+```
+
+Assuming that besides the year of birth of a person, we are also interested in the age of a person. In principle, it is easy to compute the age based on the year of birth. But for reasons of user convenience, we also provide getter and setter methods for the 
+age without saving the persons age in a slot. When looking at the getter and setter method for the age, we can see that the age 
+is directly computed from the year of birth.
+
+Creating a first instance of the reference class works as follows.
+
+```{r RefClassObjectInstantiation}
+alice <- RCPerson$new()
+alice$setFamilyName("Wonder")
+alice$setGivenName("Alice")
+alice$setYearOfBirth(1975)
+cat("Family name:   ", alice$getFamilyName(), "\n",
+    "Given name:    ", alice$getGivenName(), "\n",
+    "Year of birth: ", alice$getYearOfBirth(), "\n",
+    "Age of Alice:  ", alice$getAge(), "\n")
+```
+
+
+### Using automatically defined accessor functions
+Instead of creating all the setter and getter methods `manually`, the mechanism of `$accessors()` can be used on the instantiated reference class object. This changes the definition of our reference class for person objects as follows. 
+
+```{r RefClassBareFields}
+RCPersonAcc <- setRefClass(Class = "RCPersonAcc",
+                           fields = list(
+                             givenName = "character", 
+                             familyName = "character",
+                             emailAddress = "character",
+                             yearOfBirth = "numeric"))
+```
+
+Using this new class definition to create an instance, looks as follows.
+
+```{r RefClassAccessorMethods}
+bob <- RCPersonAcc$new()
+bob <- RCPersonAcc$accessors(c("givenName", "familyName", "emailAddress", "yearOfBirth"))
+bob$setGivenName("Robert")
+bob$setFamilyName("Miller")
+bob$setEmailAddress("bob@miller.com")
+bob$setYearOfBirth(1963)
+```
+
+In the above code snippet, an object from class `RCPersonAcc` was created using the method `$new()`. Instead of defining the getter and setter methods explicitly as shown for class `RCPerson`, the convenience function `$accessors()` is used with all field names as arguments. This call to `$accessors()` automatically defines the getter and setter methods. Those methods are used to assign specific values to the newly created object `bob`. This information can be accessed using the corresponding getter method. 
+
+```{r RefClassAccessorGetters}
+cat("Family Name:   ", bob$getFamilyName(), "\n",
+    "Given Name:    ", bob$getGivenName(), "\n",
+    "Email address: ", bob$getEmailAddress(), "\n",
+    "Year of birth: ", bob$getYearOfBirth(), "\n")
+```
+
+
+### The point of getter and setter methods
+As already mentioned above when describing the S4 system, the main point of using setter and getter methods instead of direct assignment of object fields is the concept of `information hiding`. The user of a given class must not care about how an any object internally manages the information provided by the user. As an example for our person classes, we used the information about the year of birth and the age of our person objects. Earlier in this post, we decided to store `year of birth` of any given person as a numeric field. In case we were interested in the age of that specific person, we would compute the age from the value stored in the field `yearOfBirth`. This can be done using the following methods. 
+
+```{r RefClassMethodsAge}
+bob <- RCPersonAcc$methods(setAge = function(pnAge) {
+                               nSysDateYear <- as.numeric(format(Sys.Date(), "%Y"))
+                               yearOfBirth <<- nSysDateYear - pnAge}, 
+                           getAge = function(){
+                              nSysDateYear <- as.numeric(format(Sys.Date(), "%Y"))
+                              return(nSysDateYear - yearOfBirth)
+                            }
+                           )
+```
+
+After defining the two methods `setAge()` and `getAge()`, the age of our person object `bob` can readily be obtained using 
+
+```{r RefClassGetAge}
+cat("Age: ", bob$getAge(), "\n")
+```
+
+### Please note: methods after accessor
+It has to be noted that the methods `setAge()` and `getAge()` must be defined after applying the `$accessor()` method on the reference class generator. If not, it seams that methods `setAge()` and `getAge()` can no longer be found which is indicated by the error message at the end of the next code snippet.
+
+```{r RefClassMethodLost}
+RCPersonMethLost <- setRefClass(Class = "RCPersonMethLost",
+                                fields = list(
+                                  givenName = "character", 
+                                  familyName = "character",
+                                  emailAddress = "character",
+                                  yearOfBirth = "numeric"),
+                                methods = list(
+                                  setAge = function(x) {
+                                    nSysDateYear <- as.numeric(format(Sys.Date(), "%Y"))
+                                    yearOfBirth <<- nSysDateYear - x}, 
+                                  getAge = function(){
+                                    nSysDateYear <- as.numeric(format(Sys.Date(), "%Y"))
+                                    return(nSysDateYear-yearOfBirth)
+                                  }
+                                ))
+bob <- RCPersonMethLost$new()
+bob <- RCPersonMethLost$accessors(c("givenName", "familyName", "emailAddress", "yearOfBirth"))
+bob$setGivenName("Robert")
+bob$setFamilyName("Miller")
+bob$setEmailAddress("bob@miller.com")
+bob$setYearOfBirth(1963)
+tryCatch(bob$getAge(), 
+         error = function(e) {
+           cat("Error in getAge(): \n")
+           print(e)})
+```
+
+### Accessor function in field definitions
+The definition of the reference class for our little person class can be even shortened. The `setRefClass()` function allows to specify an accessor function directly in the field definition. Hence for our example, we can write
+
+```{r RefClassFieldAcc}
+RCPersonFieldAcc <- setRefClass(Class = "RCPersonFieldAcc",
+                                fields = list(
+                                  givenName = "character", 
+                                  familyName = "character",
+                                  emailAddress = "character",
+                                  yearOfBirth = "numeric",
+                                  age = function(age) {
+                                    if (missing(age)) {
+                                      as.numeric(format(Sys.Date(), "%Y")) - .self$yearOfBirth
+                                    } else {
+                                      yearOfBirth <<- as.numeric(format(Sys.Date(), "%Y")) - age
+                                      age 
+                                    }
+                                  }))
+```
+
+Creating an instance of class `RCPersonFieldAcc` works analogously as shown above for all the other classes. 
+
+```{r RCFieldAccObiInst}
+selma <- RCPersonFieldAcc$new()
+selma$givenName <- "Selma"
+selma$familyName <- "Walker"
+selma$emailAddress <- "selma@gmail.com"
+selma$yearOfBirth <- 1993
+cat("Name:          ", selma$familyName, "\n", 
+    "First Name:    ", selma$givenName, "\n",
+    "Emailaddress:  ", selma$emailAddress, "\n",
+    "Year of birth: ", selma$yearOfBirth, "\n",
+    "Age:           ", selma$age, "\n")
+```
+
+Unfortunately it does not seam to be possible to combine the above RC definition together with the `$accessors()` mechanism which is shown below.
+
+```{r RCFieldAccAutoAcc}
+louise <- RCPersonFieldAcc$new()
+louise <- RCPersonFieldAcc$accessors(c("givenName", "familyName", "emailAddress", "yearOfBirth"))
+louise$setGivenName("Louise")
+louise$setFamilyName("Runner")
+louise$setEmailAddress("lou@twitter.com")
+louise$setYearOfBirth(1998)
+cat("Name:          ", louise$getFamilyName(), "\n", 
+    "First Name:    ", louise$getGivenName(), "\n",
+    "Emailaddress:  ", louise$getEmailAddress(), "\n",
+    "Year of brith: ", louise$getYearOfBirth(), "\n",
+    "Age:           ", louise$age, "\n")
+
+```
+
+From the output above, we can see that the value in object field age seams to be missing. 
+
+
+## Conclusions
+R's reference class (RC) system is closer to the concepts known from other object-oriented programming languages such as Java or C++ then the older S4 class system. This is mainly due to the fact that in RC methods belong to objects and not to functions as in S4 (and also in the older S3 system which is not described here). 
+
+But there are a few differences between RC and Java/C++. Notably, RC does not have the notion of `private` or `public` class components. The ability to declare certain components of a class as private, i.e., not visible to the outside of an object, would be very important when trying to follow the principle of `information hiding` in a strict sense. 
+
+Based on the experiments above, and assuming that we do not want to access object fields directly and we do not want to use direct assignment, it seams that we can get a reasonably short class definition and object instantiation and setters and getters for all class components by using the strategy shown in the following code snippet which defines the reference class `RCPersonFinal`.  
+
+```{r RCfinal}
+RCPersonFinal <- setRefClass(Class = "RCPersonFinal",
+                             fields = list(
+                             givenName    = "character", 
+                             familyName   = "character",
+                             emailAddress = "character",
+                             yearOfBirth  = "numeric"))
+fred <- RCPersonFinal$new()
+fred <- RCPersonFinal$accessors(c("givenName", "familyName", "emailAddress", "yearOfBirth"))
+fred <- RCPersonFinal$methods(setAge = function(pnAge) {
+                                yearOfBirth <<- as.numeric(format(Sys.Date(), "%Y")) - pnAge}, 
+                              getAge = function(){
+                                return(as.numeric(format(Sys.Date(), "%Y")) - yearOfBirth)
+                              })
+fred$setFamilyName("Flintstone")
+fred$setGivenName("Alfred")
+fred$setEmailAddress("fred@flintstone.com")
+fred$setYearOfBirth(1955)
+```
+
+
+## Outlook and Next Steps
+So far we have only used simple reference classes that were built on basic data types. The next step is to build more complicated reference classes which are composed of other reference classes themselves. An example for a composed class would be a person class which contains the persons address and the address again is a class that contains the name of the street, the city, the postal code and the country. 
+
+```{r RCAddress}
+RCAddress <- setRefClass(Class = "RCAddress",
+                         fields = list(
+                           streetName = "character",
+                           cityName = "character",
+                           postalCode = "character",
+                           countryName = "character"),
+                         methods = list(
+                           setStreetName = function(psStreetName) {
+                             streetName <<- psStreetName
+                           },
+                           getStreetName = function() {
+                             return(streetName)
+                           },
+                           setCityName = function(psCityName) {
+                             cityName <<- psCityName
+                           },
+                           getCityName = function() {
+                             return(cityName)
+                           },
+                           setPostalCode = function(psPostalCode) {
+                             postalCode <<- psPostalCode
+                           },
+                           getPostalCode = function() {
+                             return(postalCode)
+                           },
+                           setCountryName = function(psCountryName) {
+                             countryName <<- psCountryName
+                           },
+                           getCountryName = function() {
+                             return(countryName)
+                           }
+                         ))
+```
+
+Since we want to use objects of type `RCAddress` as components in an other reference class, i cannot imagine how this integration could be combined with using the `$accessors()` function on the reference class generator. Hence, all setter and getter methods in the reference class `RCAddress` were defined explicitly as `methods` argument in `setRefClass()`. 
+
+The reference class `RCAddress` can be used as a component in an extended person class where one field stores that address and is of type `RCAddress`. 
+
+An instance of class `RCPersonExt` can be created by first defining an object of class `RCAddress` and then assigning that as an address component for the respective `RCPersonExt` object. But for more convenience, we are adding methods to reference class `RCPersonExt` to allow to specify and to change the components of the address directly. 
+
+```{r RCPersonWithAddress}
+RCPersonExt <- setRefClass(Class = "RCPersonExt",
+                           fields = list(
+                             givenName     = "character", 
+                             familyName    = "character",
+                             emailAddress  = "character",
+                             yearOfBirth   = "numeric",
+                             postalAddress = "RCAddress"),
+                           methods = list(
+                             setGivenName = function(psGivenName) {
+                               givenName <<- psGivenName
+                             },
+                             getGivenName = function() {
+                               return(givenName)
+                             },
+                             setFamilyName = function(psFamilyName) {
+                               familyName <<- psFamilyName
+                             },
+                             getFamilyName = function() {
+                               return(familyName)
+                             },
+                             setEmailAddress = function(psEmailAddress) {
+                               emailAddress <<- psEmailAddress
+                             },
+                             getEmailAddress = function() {
+                               return(emailAddress)
+                             },
+                             setYearOfBirth = function(pnYearOfBirth) {
+                               yearOfBirth <<- pnYearOfBirth
+                             },
+                             getYearOfBirth = function() {
+                               return(yearOfBirth)
+                             },
+                             setAge = function(pnAge) {
+                                yearOfBirth <<- as.numeric(format(Sys.Date(), "%Y")) - pnAge}, 
+                              getAge = function(){
+                                return(as.numeric(format(Sys.Date(), "%Y")) - yearOfBirth)
+                              },
+                             setPostalAddress = function(prcPostalAddress) {
+                               postalAddress <<- prcPostalAddress
+                             },
+                             getPostalAddress = function() {
+                               return(postalAddress)
+                             },
+                             setStreetName = function(psStreetName) {
+                               postalAddress$setStreetName(psStreetName)
+                             },
+                             getStreetName = function(){
+                               return(postalAddress$getStreetName())
+                             },
+                             setCityName = function(psCityName) {
+                             postalAddress$setCityName(psCityName)
+                             },
+                             getCityName = function() {
+                               return(postalAddress$getCityName())
+                             },
+                             setPostalCode = function(psPostalCode) {
+                               postalAddress$setPostalCode(psPostalCode)
+                             },
+                             getPostalCode = function() {
+                               return(postalAddress$getPostalCode())
+                             },
+                             setCountryName = function(psCountryName) {
+                               postalAddress$setCountryName(psCountryName)
+                             },
+                             getCountryName = function() {
+                               return(postalAddress$getCountryName())
+                             },
+                             show = function() {
+                                cat("Name:          ", familyName, "\n", 
+                                    "First Name:    ", givenName, "\n",
+                                    "Emailaddress:  ", emailAddress, "\n",
+                                    "Year of brith: ", yearOfBirth, "\n",
+                                    "Age:           ", .self$getAge(), "\n",
+                                    "Street:        ", .self$getStreetName(), "\n",
+                                    "City:          ", .self$getCityName(), "\n",
+                                    "Postal Code:   ", .self$getPostalCode(), "\n",
+                                    "Country:       ", .self$getCountryName(), "\n")}
+                           ))
+
+```
+
+Now we are ready to create an instance of our extended reference class for a person.
+
+```{r RCPersonWithAddressInst}
+wilma <- RCPersonExt$new()
+wilma$setGivenName("Wilma")
+wilma$setFamilyName("Flintstone")
+wilma$setEmailAddress("wilma@flintstone.net")
+wilma$setYearOfBirth(1984)
+wilma$setPostalAddress(RCAddress$new())
+wilma$setStreetName("Flintdrive")
+wilma$setCityName("Flint-City")
+wilma$setPostalCode("FC-55443")
+wilma$setCountryName("Flint-Country")
+```
+
+So far we always tested the content of an instantiated reference class object using a `cat()` statement which showed all 
+object fields. Whenever, we have a task at hand that comes up repeatedly, this cries out for a solution using a method 
+that performs the repeated task. Hence instead of multiplying always the same `cat()`-statements by copy-paste, this 
+can be simplified by defining an additional method which shows all components. An example for such a `show()`-method is already 
+shown in the above reference class definition. The call to the `show()`-method is shown below.
+
+```{r RCPersonWithAddressShow}
+wilma$show()
+```
